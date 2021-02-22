@@ -1,4 +1,5 @@
 ﻿using Microsoft.SharePoint.Client;
+using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,7 +11,7 @@ namespace SPOCopy
 {
     class SPFileHelper
     {
-        public static void UploadDocument(ClientContext clientContext, string sourceFilePath, string serverRelativeDestinationPath, string fileName)
+        public static void UploadDocument(ClientContext clientContext, string sourceFilePath, string serverRelativeDestinationPath, string fileName, ref IVsOutputWindowPane customPane)
         {
             Microsoft.SharePoint.Client.File file;
 
@@ -33,9 +34,11 @@ namespace SPOCopy
                 clientContext.Load(uploadFile);
                 clientContext.ExecuteQueryRetry();
             }
+
+            customPane.OutputString(Environment.NewLine + $"File '{fileName}' uploaded succesfully to {folder.ServerRelativeUrl}");
         }
 
-        public static void UploadFoldersRecursively(ClientContext clientContext, System.IO.DirectoryInfo folderInfo, Folder folder)
+        public static void UploadFoldersRecursively(ClientContext clientContext, System.IO.DirectoryInfo folderInfo, Folder folder, ref IVsOutputWindowPane customPane)
         {
             System.IO.FileInfo[] files = null;
             System.IO.DirectoryInfo[] subDirs = null;
@@ -56,15 +59,15 @@ namespace SPOCopy
 
             if (files != null)
             {
+                string destPath = folderInfo.FullName.Substring(folderInfo.FullName.IndexOf("Style Library") + "Style Library".Length).Replace("\\", "/");
+
                 foreach (System.IO.FileInfo fi in files)
                 {
                     Console.WriteLine(fi.FullName);
                     clientContext.Load(folder);
                     clientContext.ExecuteQueryRetry();
 
-                    string destPath = fi.FullName.Substring(fi.FullName.IndexOf("Style Library") + "Style Library".Length).Replace("\\", "/");
-
-                    UploadDocument(clientContext, fi.FullName, folder.ServerRelativeUrl + destPath.Replace("/" + fi.Name, ""), fi.Name);
+                    UploadDocument(clientContext, fi.FullName, folder.ServerRelativeUrl , fi.Name, ref customPane);
                 }
 
                 subDirs = folderInfo.GetDirectories();
@@ -73,7 +76,7 @@ namespace SPOCopy
                 {
                     Folder subFolder = folder.Folders.Add(dirInfo.Name);
                     clientContext.ExecuteQueryRetry();
-                    UploadFoldersRecursively(clientContext, dirInfo, subFolder);
+                    UploadFoldersRecursively(clientContext, dirInfo, subFolder, ref customPane);
                 }
             }
         }

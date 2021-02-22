@@ -94,9 +94,12 @@ namespace SPOCopy
         /// <param name="e">Event args.</param>
         private async void Execute(object sender, EventArgs e)
         {
+            string projectItemName = string.Empty;
+            string path = string.Empty;
+
             SPOCopyPackage spoCopyPackage = package as SPOCopyPackage;
 
-            if(string.IsNullOrEmpty(spoCopyPackage.SiteCollectionUrl) || string.IsNullOrEmpty(spoCopyPackage.Username) || string.IsNullOrEmpty(spoCopyPackage.Password))
+            if (string.IsNullOrEmpty(spoCopyPackage.SiteCollectionUrl) || string.IsNullOrEmpty(spoCopyPackage.Username) || string.IsNullOrEmpty(spoCopyPackage.Password))
             {
                 VsShellUtilities.ShowMessageBox(
                                this.package,
@@ -157,11 +160,12 @@ namespace SPOCopy
 
                             if (projectItem != null)
                             {
-                                string projectItemName = projectItem.Name;
-                                string path = projectItem.Properties.Item("FullPath").Value.ToString();
+                                projectItemName = projectItem.Name;
+                                path = projectItem.Properties.Item("FullPath").Value.ToString();
 
                                 message = $"Called on {projectItemName}";
-                                string destPath = string.Empty;
+
+                                string destPath = path.Substring(path.IndexOf("Style Library") + "Style Library".Length).Replace("\\", "/");
 
                                 if (!string.IsNullOrEmpty(path) && path.Contains("Style Library"))
                                 {
@@ -172,31 +176,32 @@ namespace SPOCopy
                                         System.IO.DirectoryInfo di = new System.IO.DirectoryInfo(path);
 
                                         SPFileHelper.UploadFolderStructure(cc, rootFolder, path, "Style Library");
-                                        SPFileHelper.UploadFoldersRecursively(cc, di, rootFolder);
 
-                                        customPane.OutputString(Environment.NewLine + $"Upload completed.");
+                                        Folder folder = web.GetFolderByServerRelativeUrl(rootFolder.ServerRelativeUrl + destPath);
+                                        cc.Load(folder);
+                                        cc.ExecuteQueryRetry();
+
+                                        SPFileHelper.UploadFoldersRecursively(cc, di, folder, ref customPane);
                                     }
                                     else
                                     {
-                                        customPane.OutputString($"Uploading file {projectItemName} - {path}");
+                                        customPane.OutputString(Environment.NewLine + $"Uploading file {projectItemName} - {path}");
 
                                         SPFileHelper.UploadFolderStructure(cc, rootFolder, path, "Style Library");
 
-                                        destPath = path.Substring(path.IndexOf("Style Library") + "Style Library".Length).Replace("\\", "/");
-
-                                        SPFileHelper.UploadDocument(cc, path, list.RootFolder.ServerRelativeUrl + destPath.Replace("/" + projectItemName, ""), projectItemName);
-
-                                        customPane.OutputString(Environment.NewLine + $"Upload completed.");
+                                        SPFileHelper.UploadDocument(cc, path, list.RootFolder.ServerRelativeUrl + destPath.Replace("/" + projectItemName, ""), projectItemName, ref customPane);
                                     }
                                 }
                                 else
                                 {
-                                    customPane.OutputString((Environment.NewLine +  $"Selected file or folder is not a Style Library item");
+                                    customPane.OutputString(Environment.NewLine + $"Selected file or folder is not a Style Library item");
                                     return;
                                 }
 
                             }
                         }
+
+                        customPane.OutputString(Environment.NewLine + $"Operation completed.");
 
                         // Show a message box to prove we were here
                         VsShellUtilities.ShowMessageBox(
@@ -223,6 +228,18 @@ namespace SPOCopy
                 //        OLEMSGBUTTON.OLEMSGBUTTON_OK,
                 //        OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
                 //}
+            }
+            catch (System.IO.FileNotFoundException notfounEx)
+            {
+                customPane.OutputString(Environment.NewLine + $"File '{projectItemName}' not found on Style Library (local path: {path})");
+
+                VsShellUtilities.ShowMessageBox(
+                               this.package,
+                               notfounEx.Message,
+                               "SPO Copy",
+                               OLEMSGICON.OLEMSGICON_CRITICAL,
+                               OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                               OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
             }
             catch (Exception ex)
             {
